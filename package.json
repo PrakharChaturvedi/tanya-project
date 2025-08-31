@@ -1,0 +1,16 @@
+{
+  "name": "project-pluto",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter backend dev\" \"pnpm --filter frontend dev\"",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}
