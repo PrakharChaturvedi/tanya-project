@@ -9,8 +9,20 @@ import { chromium, Page } from "playwright";
 (async () => {
   // Use environment variable to determine headless mode, default to true for production
   const isHeadless = process.env.HEADLESS !== 'false';
-  const browser = await chromium.launch({ headless: isHeadless });
-  logger.info(`🚀 Playwright browser launched (${isHeadless ? 'headless' : 'headed'} mode)`);
+  
+  // Configure browser with additional options to disable Google One Tap prompts
+  const browser = await chromium.launch({ 
+    headless: isHeadless,
+    args: [
+      '--disable-features=IdleDetection',
+      '--disable-blink-features=IdleDetection',
+      '--disable-features=WebOTP',
+      '--disable-features=FedCm',
+      '--disable-features=IdentityCredentialAPI'
+    ]
+  });
+  
+  logger.info(`🚀 Playwright browser launched (${isHeadless ? 'headless' : 'headed'} mode with Google One Tap disabled)`);
 
   type PricePage = {
     symbol: string;
@@ -21,7 +33,28 @@ import { chromium, Page } from "playwright";
   const pages = new Map<string, PricePage>();
 
   async function openSymbolPage(symbol: string): Promise<Page> {
-    const page = await browser.newPage();
+    // Create a new context with stricter permissions to block Google One Tap
+    const context = await browser.newContext({
+      permissions: [],
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      bypassCSP: true,
+      javaScriptEnabled: true,
+      ignoreHTTPSErrors: true,
+    });
+    
+    // Add routes to block Google Identity services and other third-party scripts that might cause issues
+    await context.route('**/*accounts.google.com**', route => route.abort());
+    await context.route('**/gsi/**', route => route.abort());
+    await context.route('**/apis.google.com/js/platform.js**', route => route.abort());
+    await context.route('**/apis.google.com/js/api.js**', route => route.abort());
+    await context.route('**/accounts.google.com/gsi/**', route => route.abort());
+    await context.route('**/accounts.google.com/o/oauth2/**', route => route.abort());
+    
+    // Block other potential third-party authentication services
+    await context.route('**/connect.facebook.net/**', route => route.abort());
+    await context.route('**/platform.twitter.com/**', route => route.abort());
+    
+    const page = await context.newPage();
     const url = `https://www.tradingview.com/symbols/${symbol}/?exchange=BINANCE`;
     
     try {
@@ -29,6 +62,67 @@ import { chromium, Page } from "playwright";
       await page.goto(url, { 
         waitUntil: "domcontentloaded", 
         timeout: 30000 
+      });
+      
+      // Remove any Google One Tap related elements that might have loaded
+      await page.evaluate(() => {
+        // Remove Google One Tap iframe if it exists
+        const googleOneTabIframes = document.querySelectorAll('iframe[src*="accounts.google.com"]');
+        googleOneTabIframes.forEach(iframe => iframe.remove());
+        
+        // Remove any script tags related to Google services
+        const scripts = document.querySelectorAll('script[src*="accounts.google.com"], script[src*="apis.google.com"]');
+        scripts.forEach(script => script.remove());
+        
+        // Remove any div containers that might be used for Google One Tap
+        const divs = document.querySelectorAll('div[id*="google"], div[class*="google"], div[id*="credential"], div[class*="credential"]');
+        divs.forEach(div => {
+          if (div.id && (div.id.includes('google') || div.id.includes('credential'))) {
+            div.remove();
+          }
+          if (div.className && (div.className.includes('google') || div.className.includes('credential'))) {
+            div.remove();
+          }
+        });
+      });
+      
+      // Inject script to disable Google One Tap and other third-party authentication services
+      await page.addInitScript(() => {
+        // Disable Google services
+        Object.defineProperty(window, 'google', {
+          value: undefined,
+          writable: false
+        });
+        
+        // Disable other potential authentication services
+        Object.defineProperty(window, 'FB', {
+          value: undefined,
+          writable: false
+        });
+        
+        Object.defineProperty(window, 'twttr', {
+          value: undefined,
+          writable: false
+        });
+        
+        // Override the prompt function that might be used by Google One Tap
+        const originalPrompt = window.prompt;
+        window.prompt = function(message, defaultValue) {
+          if (message && message.includes('google')) {
+            return null;
+          }
+          return originalPrompt(message, defaultValue);
+        };
+        
+        // Disable credential management API that might be used by Google One Tap
+        if (navigator.credentials) {
+          navigator.credentials.get = function() {
+            return Promise.resolve(null);
+          };
+          navigator.credentials.store = function() {
+            return Promise.resolve();
+          };
+        }
       });
       
       // Add error handler for page errors
