@@ -101,7 +101,7 @@ async function ensureSymbolState(symbolRaw: string): Promise<SymbolState> {
   let st = symbolStates.get(symbol);
   if (st) return st;
 
-  const page = await openPageForSymbol(symbol);
+  const page = await openSymbolPage(symbol);
   st = {
     symbol,
     page,
