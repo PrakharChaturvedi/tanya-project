@@ -126,7 +126,7 @@ import { chromium, Page } from "playwright";
       });
       
       // Add error handler for page errors
-      page.on('error', error => {
+      page.on('pageerror', error => {
         logger.error(`Page error for ${symbol}: ${error.message}`);
       });
       
@@ -264,12 +264,30 @@ async function pumpSymbolToClient(symbol: string, client: any) {
   return () => clearInterval(interval); // stop function
 }
 
+// Define a list of popular crypto tickers
+const popularTickers = [
+  "BTCUSD", "ETHUSD", "XRPUSD", "LTCUSD", "BCHUSD", "ADAUSD", "DOTUSD", "LINKUSD", 
+  "BNBUSD", "SOLUSD", "DOGEUSD", "MATICUSD", "AVAXUSD", "UNIUSD", "XLMUSD", "ATOMUSD"
+];
+
 // ---------------------- Express + WebSocket ----------------------
 const app = express();
 const port = Number(process.env.PORT) || 4000;
 
+// Enable CORS for all routes
+app.use((_req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});
+
 app.get("/", (_req: any, res: { send: (arg0: string) => void; }) => {
   res.send("Backend (WebSocket price streamer) running 🚀");
+});
+
+// Endpoint to get list of available tickers
+app.get("/api/tickers", (_req, res) => {
+  res.json({ tickers: popularTickers });
 });
 
 const server = http.createServer(app);

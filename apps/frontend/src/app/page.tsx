@@ -8,11 +8,27 @@ import { Button } from "@/components/ui/button";
 
 type PriceMap = Record<string, number>;
 
-export default function HomePage() {
+export default function Home() {
   const [tickers, setTickers] = useState<string[]>(["BTCUSD", "ETHUSD"]);
   const [prices, setPrices] = useState<PriceMap>({});
   const [newTicker, setNewTicker] = useState("");
+  const [availableTickers, setAvailableTickers] = useState<string[]>([]);
+  const [selectedTicker, setSelectedTicker] = useState<string>("");
+  const [wsConnected, setWsConnected] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Fetch available tickers from backend
+  useEffect(() => {
+    fetch("http://localhost:4000/api/tickers")
+      .then(response => response.json())
+      .then(data => {
+        setAvailableTickers(data.tickers);
+      })
+      .catch(error => {
+        console.error("Failed to fetch tickers:", error);
+      });
+  }, []);
 
   // Connect WebSocket with reconnection logic
   useEffect(() => {
@@ -97,6 +113,18 @@ export default function HomePage() {
     setNewTicker("");
   };
 
+  const addSelectedTicker = () => {
+    if (!selectedTicker || tickers.includes(selectedTicker)) return;
+    
+    setTickers((prev) => [...prev, selectedTicker]);
+
+    wsRef.current?.send(
+      JSON.stringify({ type: "subscribe", tickers: [selectedTicker] })
+    );
+
+    setSelectedTicker("");
+  };
+
   const removeTicker = (ticker: string) => {
     setTickers((prev) => prev.filter((t) => t !== ticker));
 
@@ -111,27 +139,77 @@ export default function HomePage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold text-center">Live Crypto Prices</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 py-10 px-4 sm:px-6">
+      <div className="max-w-4xl mx-auto">
+        <header className="mb-10 text-center">
+          <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-primary-400 mb-2">Live Crypto Prices</h1>
+          <p className="text-gray-600 dark:text-gray-300">Real-time cryptocurrency price tracker</p>
+        </header>
 
-      <div className="flex gap-2 justify-center">
-        <Input
-          placeholder="Enter ticker (e.g. BTCUSD)"
-          value={newTicker}
-          onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
-        />
-        <Button onClick={addTicker}>Add</Button>
-      </div>
+        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl shadow-lg p-6 mb-8">
+          <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+            <div className="flex-1 space-y-2">
+              <label htmlFor="manual-ticker" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Add Custom Ticker</label>
+              <div className="flex gap-2">
+                <Input
+                  id="manual-ticker"
+                  placeholder="Enter ticker (e.g. BTCUSD)"
+                  value={newTicker}
+                  onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
+                  className="flex-1 bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600"
+                />
+                <Button 
+                  onClick={addTicker}
+                  className="bg-primary-600 hover:bg-primary-700 text-white"
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex-1 space-y-2">
+              <label htmlFor="ticker-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Popular Tickers</label>
+              <div className="flex gap-2">
+                <select 
+                  id="ticker-select"
+                  className="flex-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  value={selectedTicker}
+                  onChange={(e) => setSelectedTicker(e.target.value)}
+                >
+                  <option value="">Select a ticker</option>
+                  {availableTickers.map((ticker) => (
+                    <option key={ticker} value={ticker}>
+                      {ticker}
+                    </option>
+                  ))}
+                </select>
+                <Button 
+                  onClick={addSelectedTicker}
+                  className="bg-primary-600 hover:bg-primary-700 text-white"
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      <div className="grid gap-4">
-        {tickers.map((ticker) => (
-          <TickerCard
-            key={ticker}
-            ticker={ticker}
-            price={prices[ticker]}
-            onRemove={() => removeTicker(ticker)}
-          />
-        ))}
+        {tickers.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2">
+            {tickers.map((ticker) => (
+              <TickerCard
+                key={ticker}
+                ticker={ticker}
+                price={prices[ticker]}
+                onRemove={() => removeTicker(ticker)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl shadow-lg">
+            <p className="text-gray-500 dark:text-gray-400">No tickers added yet. Add some tickers to track their prices.</p>
+          </div>
+        )}
       </div>
     </div>
   );
